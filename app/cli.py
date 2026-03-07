@@ -68,6 +68,10 @@ CLI 命令:
   /reload               手动热加载 Prompt
   /eval <1-5> [备注]    对上一轮回答打分
   /prompt add/del/show  管理 Prompt 场景
+  /web <关键词>          搜索网络信息
+  /schedule <描述>       用自然语言创建定时任务
+  /schedule list        查看定时任务
+  /schedule remove <名称> 删除定时任务
   /run <script> [args]  执行本地脚本
   /<场景id> <问题>       用指定场景处理本条消息
 """.strip())

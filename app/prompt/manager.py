@@ -29,6 +29,7 @@ class PromptConfig:
     keywords: list[str] = field(default_factory=list)
     model: ModelConfig = field(default_factory=ModelConfig)
     system: list[dict[str, str]] = field(default_factory=list)
+    tools: list[dict] = field(default_factory=list)
 
 
 def _parse_prompt_file(path: Path) -> PromptConfig | None:
@@ -51,6 +52,7 @@ def _parse_prompt_file(path: Path) -> PromptConfig | None:
                 max_tokens=model_raw.get("max_tokens"),
             ),
             system=raw.get("system", []),
+            tools=raw.get("tools", []),
         )
     except Exception:
         logger.exception("Failed to parse prompt file: %s", path)

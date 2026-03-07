@@ -8,13 +8,14 @@ from app.executor.script import script_execute
 from app.executor.rag import rag_execute
 from app.memory.conversation import get_history, save_message
 from app.prompt.manager import PromptManager
+from app.utils.web_search_default import search, format_search_results
 
 logger = logging.getLogger(__name__)
 
 
 @dataclass
 class RouteResult:
-    type: str  # "chat" | "script" | "rag" | "command"
+    type: str  # "chat" | "script" | "rag" | "command" | "web_search"
     domain_id: str = ""
     message: str = ""
     script_name: str = ""
@@ -33,6 +34,10 @@ async def dispatch(
 
     if route.type == "script":
         return await script_execute(route.script_name, route.script_args)
+
+    if route.type == "web_search":
+        response = search(route.message)
+        return format_search_results(response)
 
     if route.type == "rag":
         return await rag_execute(route.message)

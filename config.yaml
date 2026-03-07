@@ -1,0 +1,18 @@
+feishu:
+  encrypt_key: ""
+  verification_token: ""
+
+gateway:
+  base_url: ""
+
+defaults:
+  model: ""
+  max_tokens: 4096
+  temperature: 0.5
+
+session:
+  max_turns: 20
+  timeout_minutes: 30
+
+server:
+  port: 3000

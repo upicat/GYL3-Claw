@@ -1,0 +1,28 @@
+[project]
+name = "gyl3-claw"
+version = "0.1.0"
+description = "飞书个人智能助手"
+requires-python = ">=3.11"
+dependencies = [
+    "fastapi",
+    "uvicorn[standard]",
+    "lark-oapi",
+    "openai",
+    "aiosqlite",
+    "apscheduler",
+    "click",
+    "python-dotenv",
+    "pyyaml",
+    "watchdog",
+    "httpx[socks]",
+]
+
+[project.scripts]
+claw = "app.cli:cli"
+
+[tool.setuptools.packages.find]
+include = ["app*"]
+
+[build-system]
+requires = ["setuptools>=68.0"]
+build-backend = "setuptools.build_meta"

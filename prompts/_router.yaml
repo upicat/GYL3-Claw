@@ -1,0 +1,17 @@
+id: _router
+name: "路由分类器"
+description: "对用户消息进行意图分类"
+
+model:
+  name: ""
+  temperature: 0.0
+  max_tokens: 50
+
+system:
+  - task: |
+      你是一个意图分类器。根据用户消息判断其所属领域，只返回领域 id，不要返回其他内容。
+
+      可选领域：
+      {{domain_list}}
+
+      如果无法确定，返回 general。

@@ -72,6 +72,8 @@ CLI 命令:
   /schedule <描述>       用自然语言创建定时任务
   /schedule list        查看定时任务
   /schedule remove <名称> 删除定时任务
+  /cmd <命令>            执行本地 shell 命令
+  /claude <问题>         调用 Claude Code 回答问题
   /run <script> [args]  执行本地脚本
   /<场景id> <问题>       用指定场景处理本条消息
 """.strip())

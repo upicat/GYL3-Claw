@@ -33,6 +33,8 @@ _HELP_TEXT = """\
 - `/schedule <描述>` — 用自然语言创建定时任务
 - `/schedule list` — 查看定时任务
 - `/schedule remove <名称>` — 删除定时任务
+- `/cmd <命令>` — 执行本地 shell 命令
+- `/claude <问题>` — 调用 Claude Code 回答问题
 - `/run <script> [args]` — 执行本地脚本
 - `/<场景id> <问题>` — 用指定场景处理本条消息
 
@@ -140,6 +142,22 @@ class Router:
             if not web_query:
                 return RouteResult(type="command", command_response="用法: /web <搜索关键词>\n示例: /web Python 最新版本")
             return RouteResult(type="web_search", message=web_query)
+
+        if cmd == "/cmd" or (cmd.startswith("/cmd") and len(cmd) > 4):
+            cmd_text = arg
+            if cmd != "/cmd":
+                cmd_text = cmd[4:] + (" " + arg if arg else "")
+            if not cmd_text:
+                return RouteResult(type="command", command_response="用法: /cmd <命令>\n示例: /cmd ls -la")
+            return RouteResult(type="shell_cmd", message=cmd_text)
+
+        if cmd == "/claude" or (cmd.startswith("/claude") and len(cmd) > 7):
+            claude_text = arg
+            if cmd != "/claude":
+                claude_text = cmd[7:] + (" " + arg if arg else "")
+            if not claude_text:
+                return RouteResult(type="command", command_response="用法: /claude <问题>\n示例: /claude 用Python写一个快排")
+            return RouteResult(type="claude_cmd", message=claude_text)
 
         if cmd == "/schedule":
             return await self._handle_schedule(arg)

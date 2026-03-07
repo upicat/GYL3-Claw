@@ -5,6 +5,7 @@ from dataclasses import dataclass
 
 from app.executor.chat import chat_execute
 from app.executor.script import script_execute
+from app.executor.shell import shell_execute
 from app.executor.rag import rag_execute
 from app.memory.conversation import get_history, save_message
 from app.prompt.manager import PromptManager
@@ -15,7 +16,7 @@ logger = logging.getLogger(__name__)
 
 @dataclass
 class RouteResult:
-    type: str  # "chat" | "script" | "rag" | "command" | "web_search"
+    type: str  # "chat" | "script" | "rag" | "command" | "web_search" | "shell_cmd" | "claude_cmd"
     domain_id: str = ""
     message: str = ""
     script_name: str = ""
@@ -34,6 +35,14 @@ async def dispatch(
 
     if route.type == "script":
         return await script_execute(route.script_name, route.script_args)
+
+    if route.type == "shell_cmd":
+        return await shell_execute(route.message)
+
+    if route.type == "claude_cmd":
+        import shlex
+        cmd = f"claude -p {shlex.quote(route.message)}"
+        return await shell_execute(cmd, timeout=120)
 
     if route.type == "web_search":
         response = search(route.message)

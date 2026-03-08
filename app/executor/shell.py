@@ -3,6 +3,9 @@ from __future__ import annotations
 import asyncio
 import logging
 
+from app.executor.dispatcher import RouteResult
+from app.executor.registry import register_command, register_executor
+
 logger = logging.getLogger(__name__)
 
 DANGEROUS_PATTERNS = [
@@ -60,3 +63,39 @@ async def shell_execute(command: str, timeout: int = _TIMEOUT) -> str:
     if proc.returncode != 0:
         prefix += f"[exit {proc.returncode}]\n"
     return prefix + output
+
+
+# --- Plugin registration ---
+
+
+@register_command("/cmd")
+def handle_cmd(cmd: str, arg: str) -> RouteResult | None:
+    cmd_text = arg
+    if cmd != "/cmd":
+        cmd_text = cmd[4:] + (" " + arg if arg else "")
+    if not cmd_text:
+        return RouteResult(type="command", command_response="用法: /cmd <命令>\n示例: /cmd ls -la")
+    return RouteResult(type="shell_cmd", message=cmd_text)
+
+
+@register_command("/claude")
+def handle_claude(cmd: str, arg: str) -> RouteResult | None:
+    claude_text = arg
+    if cmd != "/claude":
+        claude_text = cmd[7:] + (" " + arg if arg else "")
+    if not claude_text:
+        return RouteResult(type="command", command_response="用法: /claude <问题>\n示例: /claude 用Python写一个快排")
+    return RouteResult(type="claude_cmd", message=claude_text)
+
+
+@register_executor("shell_cmd")
+async def execute_shell_cmd(route, chat_id, user_id, prompt_manager) -> str:
+    return await shell_execute(route.message)
+
+
+@register_executor("claude_cmd")
+async def execute_claude_cmd(route, chat_id, user_id, prompt_manager) -> str:
+    import shlex
+
+    cmd = f"claude -p {shlex.quote(route.message)}"
+    return await shell_execute(cmd, timeout=300)

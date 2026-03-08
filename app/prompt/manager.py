@@ -89,6 +89,9 @@ class PromptManager:
         self.reload()
 
     def reload(self) -> None:
+        import app.tools  # noqa: F401 — trigger tool registration
+        from app.tools.registry import resolve_tool_references
+
         prompts: dict[str, PromptConfig] = {}
         router_raw: dict | None = None
         for path in self._prompt_dir.glob("*.yaml"):
@@ -99,6 +102,12 @@ class PromptManager:
             cfg = _parse_prompt_file(path)
             if cfg:
                 prompts[cfg.id] = cfg
+
+        # Resolve tool references (string names → full schemas)
+        for cfg in prompts.values():
+            if cfg.tools:
+                cfg.tools = resolve_tool_references(cfg.tools)
+
         with self._lock:
             self._prompts = prompts
             self._router_raw = router_raw

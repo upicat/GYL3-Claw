@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import json
 import logging
 
 from openai import AsyncOpenAI
@@ -27,19 +26,11 @@ def _get_client() -> AsyncOpenAI:
 
 async def _execute_tool_call(name: str, arguments: str) -> str:
     """Execute a tool call and return the result as a string."""
-    if name == "web_search":
-        from app.utils.web_search_default import search_async, format_search_results
-        try:
-            args = json.loads(arguments)
-            query = args.get("query", "")
-        except (json.JSONDecodeError, AttributeError):
-            query = arguments
-        if not query:
-            return "Error: empty search query"
-        logger.info("Tool call: web_search(%r)", query)
-        response = await search_async(query)
-        return format_search_results(response)
+    from app.tools.registry import get_tool_executor
 
+    executor = get_tool_executor(name)
+    if executor:
+        return await executor(arguments)
     return f"Unknown tool: {name}"
 
 

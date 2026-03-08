@@ -4,6 +4,9 @@ import asyncio
 import logging
 from pathlib import Path
 
+from app.executor.dispatcher import RouteResult
+from app.executor.registry import register_command, register_executor
+
 logger = logging.getLogger(__name__)
 
 SCRIPTS_DIR = Path(__file__).resolve().parent.parent.parent / "scripts"
@@ -57,3 +60,24 @@ def list_scripts() -> list[str]:
         for f in SCRIPTS_DIR.iterdir()
         if f.is_file() and f.suffix in (".sh", ".py")
     ]
+
+
+# --- Plugin registration ---
+
+
+@register_command("/run")
+def handle_run(cmd: str, arg: str) -> RouteResult | None:
+    if not arg:
+        scripts = list_scripts()
+        if not scripts:
+            return RouteResult(type="command", command_response="没有可用的脚本。")
+        return RouteResult(type="command", command_response=f"可用脚本: {', '.join(scripts)}\n用法: /run <script> [args]")
+    parts = arg.split()
+    script_name = parts[0]
+    script_args = parts[1:] if len(parts) > 1 else None
+    return RouteResult(type="script", script_name=script_name, script_args=script_args)
+
+
+@register_executor("script")
+async def execute_script(route, chat_id, user_id, prompt_manager) -> str:
+    return await script_execute(route.script_name, route.script_args)

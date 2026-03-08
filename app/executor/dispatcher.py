@@ -4,12 +4,8 @@ import logging
 from dataclasses import dataclass
 
 from app.executor.chat import chat_execute
-from app.executor.script import script_execute
-from app.executor.shell import shell_execute
-from app.executor.rag import rag_execute
 from app.memory.conversation import get_history, save_message
 from app.prompt.manager import PromptManager
-from app.utils.web_search_default import search, format_search_results
 
 logger = logging.getLogger(__name__)
 
@@ -33,29 +29,14 @@ async def dispatch(
     if route.type == "command":
         return route.command_response
 
-    if route.type == "script":
-        return await script_execute(route.script_name, route.script_args)
+    # Try registered executors first
+    from app.executor.registry import EXECUTORS
 
-    if route.type == "shell_cmd":
-        return await shell_execute(route.message)
+    executor_fn = EXECUTORS.get(route.type)
+    if executor_fn:
+        return await executor_fn(route, chat_id, user_id, prompt_manager)
 
-    if route.type == "claude_cmd":
-        import shlex
-        cmd = f"claude -p {shlex.quote(route.message)}"
-        return await shell_execute(cmd, timeout=300)
-
-    if route.type == "web_search":
-        response = search(route.message)
-        return format_search_results(response)
-
-    if route.type == "url_fetch":
-        from app.utils.url_fetcher import summarize_url
-        return await summarize_url(route.message, prompt_manager)
-
-    if route.type == "rag":
-        return await rag_execute(route.message)
-
-    # chat
+    # chat — has special conversation history logic, kept inline
     prompt_config = prompt_manager.get_prompt(route.domain_id)
     if not prompt_config:
         prompt_config = prompt_manager.get_prompt("general")

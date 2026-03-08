@@ -21,12 +21,14 @@
   ↓ (WebSocket 长连接)
 lark.ws.Client 事件接收
   ↓
-混合路由 (命令 → 锁定 → 关键词 → AI分类)
+混合路由 (命令 → 插件注册表 → 锁定 → 关键词 → AI分类)
   ↓
-执行器调度 (AI对话 / 网络搜索 / 脚本 / 命令)
+执行器调度 (注册表查找 → AI对话兜底)
   ↓
 飞书回复 (文本 / Markdown 卡片)
 ```
+
+**插件化**：命令和执行器通过装饰器自注册，Tool 定义（OpenAI function calling schema）集中管理。新增命令/工具只需加一个文件，零核心文件改动。
 
 ## 快速开始
 
@@ -132,13 +134,24 @@ GYL3-Claw/
 │   ├── feishu/              # 飞书 SDK 封装
 │   ├── prompt/              # Prompt 管理器 + 热加载
 │   ├── router/              # 混合路由（命令/关键词/AI分类）
-│   ├── executor/            # 执行器（AI对话/网络搜索/脚本/RAG占位）
+│   ├── executor/            # 执行器（插件化自注册）
+│   │   ├── registry.py      #   注册中心（COMMAND_HANDLERS + EXECUTORS）
+│   │   ├── dispatcher.py    #   调度器（注册表查找 + chat 兜底）
+│   │   ├── chat.py          #   AI 对话（tool calling 查注册表）
+│   │   ├── shell.py         #   /cmd + /claude 命令插件
+│   │   ├── script.py        #   /run 命令插件
+│   │   ├── web_search_executor.py  # /web 命令插件
+│   │   ├── url_executor.py  #   /url 命令插件
+│   │   └── rag.py           #   RAG 执行器（开发中）
+│   ├── tools/               # Tool 定义注册（OpenAI function calling）
+│   │   ├── registry.py      #   注册中心（定义+执行合一）
+│   │   └── web_search.py    #   web_search tool 插件
 │   ├── memory/              # SQLite 数据库 + 对话记忆
 │   ├── utils/               # 工具模块（网络搜索/URL解析等）
 │   └── scheduler/           # APScheduler 定时任务
-├── prompts/                 # Prompt YAML 配置
+├── prompts/                 # Prompt YAML 配置（tools 字段支持引用名）
 │   ├── _router.yaml         # 路由分类器
-│   ├── general.yaml         # 通用助手
+│   ├── general.yaml         # 通用助手（tools: [web_search]）
 │   ├── code.yaml            # 代码助手
 │   └── writing.yaml         # 写作助手
 ├── scripts/                 # 可执行脚本

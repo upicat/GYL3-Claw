@@ -13,6 +13,8 @@ from app.router.classifier import classify_by_ai
 from app.router.keyword import match_by_command, match_by_keyword
 from app.scheduler.scheduler import add_scheduled_task, remove_scheduled_task, list_scheduled_tasks
 
+import app.executor  # noqa: F401 — trigger executor plugin registration
+
 logger = logging.getLogger(__name__)
 
 EVAL_LOG_PATH = Path(__file__).resolve().parent.parent.parent / "data" / "prompt_eval.jsonl"
@@ -140,41 +142,14 @@ class Router:
         if cmd == "/eval":
             return await self._handle_eval(chat_id, user_id, arg)
 
-        if cmd == "/run":
-            return self._handle_run(arg)
+        # Registered plugin commands (e.g. /web, /cmd, /url, /claude, /run)
+        from app.executor.registry import COMMAND_HANDLERS
 
-        if cmd == "/web" or (cmd.startswith("/web") and len(cmd) > 4):
-            # Support both "/web 关键词" and "/web关键词" (no space)
-            web_query = arg
-            if cmd != "/web":
-                web_query = cmd[4:] + (" " + arg if arg else "")
-            if not web_query:
-                return RouteResult(type="command", command_response="用法: /web <搜索关键词>\n示例: /web Python 最新版本")
-            return RouteResult(type="web_search", message=web_query)
-
-        if cmd == "/cmd" or (cmd.startswith("/cmd") and len(cmd) > 4):
-            cmd_text = arg
-            if cmd != "/cmd":
-                cmd_text = cmd[4:] + (" " + arg if arg else "")
-            if not cmd_text:
-                return RouteResult(type="command", command_response="用法: /cmd <命令>\n示例: /cmd ls -la")
-            return RouteResult(type="shell_cmd", message=cmd_text)
-
-        if cmd == "/url" or (cmd.startswith("/url") and len(cmd) > 4):
-            url_text = arg
-            if cmd != "/url":
-                url_text = cmd[4:] + (" " + arg if arg else "")
-            if not url_text:
-                return RouteResult(type="command", command_response="用法: /url <网页链接>\n示例: /url https://example.com")
-            return RouteResult(type="url_fetch", message=url_text.strip())
-
-        if cmd == "/claude" or (cmd.startswith("/claude") and len(cmd) > 7):
-            claude_text = arg
-            if cmd != "/claude":
-                claude_text = cmd[7:] + (" " + arg if arg else "")
-            if not claude_text:
-                return RouteResult(type="command", command_response="用法: /claude <问题>\n示例: /claude 用Python写一个快排")
-            return RouteResult(type="claude_cmd", message=claude_text)
+        for registered_cmd, handler in COMMAND_HANDLERS.items():
+            if cmd == registered_cmd or (cmd.startswith(registered_cmd) and len(cmd) > len(registered_cmd)):
+                result = handler(cmd, arg)
+                if result is not None:
+                    return result
 
         if cmd == "/schedule":
             return await self._handle_schedule(arg)
@@ -285,17 +260,6 @@ class Router:
             f"未知子命令: {sub_cmd}\n"
             "可用: `/prompt add` `/prompt del` `/prompt show`"
         ))
-
-    def _handle_run(self, arg: str) -> RouteResult:
-        if not arg:
-            scripts = list_scripts()
-            if not scripts:
-                return RouteResult(type="command", command_response="没有可用的脚本。")
-            return RouteResult(type="command", command_response=f"可用脚本: {', '.join(scripts)}\n用法: /run <script> [args]")
-        parts = arg.split()
-        script_name = parts[0]
-        script_args = parts[1:] if len(parts) > 1 else None
-        return RouteResult(type="script", script_name=script_name, script_args=script_args)
 
     async def _handle_schedule(self, arg: str) -> RouteResult:
         if not arg:

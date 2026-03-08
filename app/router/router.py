@@ -35,8 +35,11 @@ _HELP_TEXT = """\
 - `/schedule remove <名称>` — 删除定时任务
 - `/cmd <命令>` — 执行本地 shell 命令
 - `/claude <问题>` — 调用 Claude Code 回答问题
+- `/url <链接>` — 解析网页内容并总结
 - `/run <script> [args]` — 执行本地脚本
 - `/<场景id> <问题>` — 用指定场景处理本条消息
+
+直接发送一个 URL 链接也会自动解析总结。
 
 直接发送消息即可智能问答，系统会自动匹配最合适的场景。"""
 
@@ -54,6 +57,12 @@ class Router:
             cmd_result = await self._handle_command(chat_id, user_id, text)
             if cmd_result is not None:
                 return cmd_result
+
+        # Pure URL detection — auto-summarize
+        from app.utils.url_fetcher import is_url
+        detected_url = is_url(text)
+        if detected_url:
+            return RouteResult(type="url_fetch", message=detected_url)
 
         # Locked session domain
         locked_domain = self.session_domains.get(chat_id)
@@ -150,6 +159,14 @@ class Router:
             if not cmd_text:
                 return RouteResult(type="command", command_response="用法: /cmd <命令>\n示例: /cmd ls -la")
             return RouteResult(type="shell_cmd", message=cmd_text)
+
+        if cmd == "/url" or (cmd.startswith("/url") and len(cmd) > 4):
+            url_text = arg
+            if cmd != "/url":
+                url_text = cmd[4:] + (" " + arg if arg else "")
+            if not url_text:
+                return RouteResult(type="command", command_response="用法: /url <网页链接>\n示例: /url https://example.com")
+            return RouteResult(type="url_fetch", message=url_text.strip())
 
         if cmd == "/claude" or (cmd.startswith("/claude") and len(cmd) > 7):
             claude_text = arg

@@ -90,6 +90,7 @@ async def _handle_message_from_event(msg, sender) -> None:
             return
 
         content_str = msg.content or "{}"
+        logger.debug("Raw content: %s", content_str)
         content = json.loads(content_str)
         text = content.get("text", "").strip()
         logger.info("Message text: %r", text)

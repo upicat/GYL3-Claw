@@ -16,7 +16,7 @@ logger = logging.getLogger(__name__)
 
 @dataclass
 class RouteResult:
-    type: str  # "chat" | "script" | "rag" | "command" | "web_search" | "shell_cmd" | "claude_cmd"
+    type: str  # "chat" | "script" | "rag" | "command" | "web_search" | "shell_cmd" | "claude_cmd" | "url_fetch"
     domain_id: str = ""
     message: str = ""
     script_name: str = ""
@@ -47,6 +47,10 @@ async def dispatch(
     if route.type == "web_search":
         response = search(route.message)
         return format_search_results(response)
+
+    if route.type == "url_fetch":
+        from app.utils.url_fetcher import summarize_url
+        return await summarize_url(route.message, prompt_manager)
 
     if route.type == "rag":
         return await rag_execute(route.message)

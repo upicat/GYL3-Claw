@@ -41,7 +41,7 @@ async def fetch_url(url: str, timeout: int = _TIMEOUT) -> tuple[bool, str]:
         logger.error("Fetch URL error: %s", e)
         return False, f"获取页面出错: {e}"
 
-    # Strip HTML tags to get plain text
+    # Extract main content from HTML
     text = _html_to_text(raw)
     if not text.strip():
         return False, "页面内容为空"
@@ -49,18 +49,26 @@ async def fetch_url(url: str, timeout: int = _TIMEOUT) -> tuple[bool, str]:
 
 
 def _html_to_text(html: str) -> str:
-    """Simple HTML to text conversion."""
-    # Remove script and style blocks
+    """Extract main content from HTML using trafilatura, with regex fallback."""
+    try:
+        import trafilatura
+        text = trafilatura.extract(html, include_links=False, include_tables=True)
+        if text and len(text) > 50:
+            return text
+    except Exception:
+        logger.debug("trafilatura extraction failed, falling back to regex")
+
+    return _html_to_text_regex(html)
+
+
+def _html_to_text_regex(html: str) -> str:
+    """Regex-based HTML to text fallback."""
     text = re.sub(r"<script[^>]*>.*?</script>", "", html, flags=re.DOTALL | re.IGNORECASE)
     text = re.sub(r"<style[^>]*>.*?</style>", "", text, flags=re.DOTALL | re.IGNORECASE)
     text = re.sub(r"<!--.*?-->", "", text, flags=re.DOTALL)
-    # Replace common block tags with newlines
     text = re.sub(r"<(?:br|p|div|h[1-6]|li|tr)[^>]*>", "\n", text, flags=re.IGNORECASE)
-    # Remove remaining tags
     text = re.sub(r"<[^>]+>", "", text)
-    # Decode common HTML entities
     text = text.replace("&nbsp;", " ").replace("&amp;", "&").replace("&lt;", "<").replace("&gt;", ">").replace("&quot;", '"')
-    # Collapse whitespace
     text = re.sub(r"\n{3,}", "\n\n", text)
     text = re.sub(r"[ \t]+", " ", text)
     return text.strip()

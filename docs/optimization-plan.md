@@ -1,7 +1,7 @@
 # GYL3-Claw 优化建议
 
 > 2026-03-08 整理，基于当前代码全量分析 + Claude Code Skills 设计理念对比
-> 2026-03-08 更新：已完成执行器插件化 + Tool 定义外置（建议 2/3/4）
+> 2026-03-08 更新：已完成执行器插件化 + Tool 定义外置（建议 2/3/4）、搜索/URL 结果进记忆（建议 8）、HTML 正文提取优化（建议 6）
 
 ---
 
@@ -69,13 +69,14 @@ prompts/
 - 短消息（<10 字）+ 无关键词 → 直接走 `general`，跳过分类
 - 或加一个简单的 LRU 缓存，同一 chat_id 短时间内重复场景不再分类
 
-### 6. URL fetcher 的 HTML 解析太粗糙
+### 6. URL fetcher 的 HTML 解析太粗糙 ✅ 已完成
 
 当前用正则去标签，对 JS 渲染的页面基本拿不到正文。
 
-**建议**：
-- 加一个 `readability` 或 `trafilatura` 库做正文提取（pip 一条依赖）
-- fallback：正则方案作为后备
+**已实现**：
+- `_html_to_text()` 优先用 `trafilatura.extract()` 提取正文（自动过滤导航/页脚/广告）
+- 提取结果不足 50 字时自动 fallback 到原有正则方案
+- 新增 `trafilatura` 依赖到 `pyproject.toml`
 
 ### 7. 对话历史无上限清理
 
@@ -83,11 +84,14 @@ prompts/
 
 **建议**：加一个定时任务，清理 7 天前的会话记录。或者在 `save_message` 时顺手删超出 `max_turns` 的旧消息。
 
-### 8. 搜索/URL 结果没有进对话记忆
+### 8. 搜索/URL 结果没有进对话记忆 ✅ 已完成
 
 `/web` 和 `/url` 的结果直接返回，不走 `save_message`，所以 AI 后续聊天不记得之前搜过什么。
 
-**建议**：在 dispatcher 中，`web_search` 和 `url_fetch` 执行完后也存入对话历史，让多轮对话能引用之前的搜索/解析结果。
+**已实现**：
+- `web_search_executor.py` 和 `url_executor.py` 中执行前后分别调用 `save_message`
+- 用户查询存为 user 消息，结果存为 assistant 消息
+- route_name 分别标记为 `web_search` / `url_fetch`，便于区分来源
 
 ---
 
@@ -95,8 +99,8 @@ prompts/
 
 | 优先级 | 建议 | 状态 |
 |--------|------|------|
-| 高 | 8. 搜索/URL 结果进记忆 | 待做 |
-| 高 | 6. HTML 正文提取优化 | 待做 |
+| ~~高~~ | ~~8. 搜索/URL 结果进记忆~~ | ✅ 已完成 |
+| ~~高~~ | ~~6. HTML 正文提取优化~~ | ✅ 已完成 |
 | ~~高~~ | ~~4. Tool 注册表化~~ | ✅ 已完成 |
 | 中 | 5. AI 分类缓存 | 待做 |
 | ~~中~~ | ~~3. Tool 定义外置~~ | ✅ 已完成 |

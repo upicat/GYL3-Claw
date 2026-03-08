@@ -18,6 +18,7 @@ dependencies = [
     "requests",
     "aiohttp",
     "python-socks[asyncio]",
+    "trafilatura",
 ]
 
 [project.scripts]

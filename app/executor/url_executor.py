@@ -17,6 +17,12 @@ def handle_url(cmd: str, arg: str) -> RouteResult | None:
 
 @register_executor("url_fetch")
 async def execute_url_fetch(route, chat_id, user_id, prompt_manager) -> str:
+    from app.memory.conversation import save_message
     from app.utils.url_fetcher import summarize_url
 
-    return await summarize_url(route.message, prompt_manager)
+    await save_message(chat_id, user_id, "user", route.message, "url_fetch")
+
+    reply = await summarize_url(route.message, prompt_manager)
+
+    await save_message(chat_id, user_id, "assistant", reply, "url_fetch")
+    return reply

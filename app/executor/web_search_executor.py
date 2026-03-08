@@ -17,7 +17,13 @@ def handle_web(cmd: str, arg: str) -> RouteResult | None:
 
 @register_executor("web_search")
 async def execute_web_search(route, chat_id, user_id, prompt_manager) -> str:
+    from app.memory.conversation import save_message
     from app.utils.web_search_default import search, format_search_results
 
+    await save_message(chat_id, user_id, "user", f"/web {route.message}", "web_search")
+
     response = search(route.message)
-    return format_search_results(response)
+    reply = format_search_results(response)
+
+    await save_message(chat_id, user_id, "assistant", reply, "web_search")
+    return reply

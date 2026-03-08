@@ -21,11 +21,14 @@ def cli():
     pass
 
 
-@cli.command()
+# ─── _run: hidden command, actual blocking entry point for launchd ───
+
+
+@cli.command("_run", hidden=True)
 @click.option("--port", default=None, type=int, help="Server port")
 @click.option("--webhook", is_flag=True, help="Use webhook mode instead of long-connection")
-def start(port: int | None, webhook: bool):
-    """启动服务（默认长连接模式）"""
+def run_server(port: int | None, webhook: bool):
+    """内部命令：launchd 实际调用的阻塞入口"""
     from app.main import start_server
 
     PID_FILE.parent.mkdir(parents=True, exist_ok=True)
@@ -36,6 +39,145 @@ def start(port: int | None, webhook: bool):
         PID_FILE.unlink(missing_ok=True)
 
 
+# ─── start ───
+
+
+@cli.command()
+@click.option("--port", default=None, type=int, help="Server port")
+@click.option("--webhook", is_flag=True, help="Use webhook mode instead of long-connection")
+@click.option("--foreground", "-f", is_flag=True, help="前台运行（调试用）")
+def start(port: int | None, webhook: bool, foreground: bool):
+    """启动服务（默认后台常驻，被 kill 自动拉起）"""
+    if foreground:
+        # Foreground mode: same as old start, blocking
+        from app.main import start_server
+
+        PID_FILE.parent.mkdir(parents=True, exist_ok=True)
+        PID_FILE.write_text(str(os.getpid()))
+        try:
+            start_server(port=port, use_webhook=webhook)
+        finally:
+            PID_FILE.unlink(missing_ok=True)
+        return
+
+    from app.daemon import is_running, install_and_start
+
+    if is_running():
+        click.echo("服务已在运行中。如需重启请用 claw restart")
+        return
+
+    install_and_start(port=port, webhook=webhook)
+    click.echo("服务已启动（launchd 后台常驻，被 kill 会自动拉起）")
+    click.echo("查看日志: claw logs -f")
+    click.echo("停止服务: claw stop")
+
+
+# ─── stop ───
+
+
+@cli.command()
+def stop():
+    """停止服务"""
+    from app.daemon import is_running, stop_and_uninstall
+
+    if is_running():
+        stop_and_uninstall()
+        click.echo("服务已停止（launchd 已卸载）")
+        return
+
+    # Fallback: PID file (foreground mode)
+    if PID_FILE.exists():
+        pid = int(PID_FILE.read_text().strip())
+        try:
+            os.kill(pid, signal.SIGTERM)
+            click.echo(f"已发送停止信号 (PID={pid})")
+        except ProcessLookupError:
+            click.echo(f"进程 {pid} 不存在，清理 PID 文件")
+        except PermissionError:
+            click.echo(f"无权限停止进程 {pid}")
+        PID_FILE.unlink(missing_ok=True)
+        return
+
+    click.echo("未找到运行中的服务")
+
+
+# ─── status ───
+
+
+@cli.command()
+def status():
+    """查看服务运行状态"""
+    from app.daemon import is_running
+
+    if is_running():
+        pid = "unknown"
+        if PID_FILE.exists():
+            pid = PID_FILE.read_text().strip()
+        click.echo(f"服务运行中 (PID={pid})")
+    elif PID_FILE.exists():
+        pid = PID_FILE.read_text().strip()
+        # Check if the foreground process is alive
+        try:
+            os.kill(int(pid), 0)
+            click.echo(f"服务运行中（前台模式, PID={pid}）")
+        except (ProcessLookupError, ValueError):
+            click.echo("服务未运行（PID 文件残留，已清理）")
+            PID_FILE.unlink(missing_ok=True)
+    else:
+        click.echo("服务未运行")
+
+
+# ─── logs ───
+
+LOG_DIR = BASE_DIR / "logs"
+
+
+@cli.command()
+@click.option("-f", "--follow", is_flag=True, help="持续输出新日志（类似 tail -f）")
+@click.option("-n", "--lines", default=50, help="显示最后 N 行")
+def logs(follow: bool, lines: int):
+    """查看服务日志"""
+    import subprocess
+
+    log_file = LOG_DIR / "claw.log"
+    if not log_file.exists():
+        click.echo("暂无日志文件")
+        return
+
+    cmd = ["tail", f"-n{lines}"]
+    if follow:
+        cmd.append("-f")
+    cmd.append(str(log_file))
+
+    try:
+        subprocess.run(cmd)
+    except KeyboardInterrupt:
+        pass
+
+
+# ─── restart ───
+
+
+@cli.command()
+@click.option("--port", default=None, type=int, help="Server port")
+@click.option("--webhook", is_flag=True, help="Use webhook mode instead of long-connection")
+@click.pass_context
+def restart(ctx, port: int | None, webhook: bool):
+    """重启服务"""
+    import time
+    from app.daemon import install_and_start
+
+    ctx.invoke(stop)
+    click.echo("等待旧进程完全退出（约15秒）...")
+    time.sleep(15)
+    install_and_start(port=port, webhook=webhook)
+    click.echo("服务已启动")
+    click.echo("查看日志: claw logs -f")
+
+
+# ─── help ───
+
+
 @cli.command()
 def help():
     """查看使用帮助"""
@@ -43,8 +185,12 @@ def help():
 GYL3-Claw 飞书个人智能助手
 
 CLI 命令:
-  claw start [--port N] [--webhook]  启动服务（默认长连接）
+  claw start [--port N] [--webhook]  启动后台服务（launchd 常驻）
+  claw start -f [--port N] [--webhook]  前台启动（调试用）
   claw stop                         停止服务
+  claw status                       查看服务状态
+  claw restart [--port N] [--webhook]  重启服务
+  claw logs [-f] [-n 50]            查看日志（-f 持续输出）
   claw help                         查看帮助
 
   claw prompt list                  列出所有 Prompt 场景
@@ -77,24 +223,6 @@ CLI 命令:
   /run <script> [args]  执行本地脚本
   /<场景id> <问题>       用指定场景处理本条消息
 """.strip())
-
-
-@cli.command()
-def stop():
-    """停止服务"""
-    if not PID_FILE.exists():
-        click.echo("未找到运行中的服务（无 PID 文件）")
-        return
-    pid = int(PID_FILE.read_text().strip())
-    try:
-        os.kill(pid, signal.SIGTERM)
-        click.echo(f"已发送停止信号 (PID={pid})")
-        PID_FILE.unlink(missing_ok=True)
-    except ProcessLookupError:
-        click.echo(f"进程 {pid} 不存在，清理 PID 文件")
-        PID_FILE.unlink(missing_ok=True)
-    except PermissionError:
-        click.echo(f"无权限停止进程 {pid}")
 
 
 # -- prompt subgroup --

@@ -42,7 +42,7 @@ async def dispatch(
     if route.type == "claude_cmd":
         import shlex
         cmd = f"claude -p {shlex.quote(route.message)}"
-        return await shell_execute(cmd, timeout=120)
+        return await shell_execute(cmd, timeout=300)
 
     if route.type == "web_search":
         response = search(route.message)

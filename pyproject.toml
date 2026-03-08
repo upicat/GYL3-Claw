@@ -17,6 +17,7 @@ dependencies = [
     "httpx[socks]",
     "requests",
     "aiohttp",
+    "python-socks[asyncio]",
 ]
 
 [project.scripts]

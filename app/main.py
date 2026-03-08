@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import os
 import threading
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -147,18 +148,22 @@ async def _handle_message_from_event(msg, sender) -> None:
 async def lifespan(app_: FastAPI):
     global prompt_manager, router
 
-    await init_db()
-    prompt_manager = PromptManager(PROMPTS_DIR)
-    prompt_manager.start_watcher()
-    router = Router(prompt_manager)
-    await init_scheduler()
+    # In long-connection mode, components are already initialised on the ws loop;
+    # only run lifespan init when prompt_manager has not been set up yet (webhook mode).
+    if prompt_manager is None:
+        await init_db()
+        prompt_manager = PromptManager(PROMPTS_DIR)
+        prompt_manager.start_watcher()
+        router = Router(prompt_manager)
+        await init_scheduler()
 
     logger.info("GYL3-Claw FastAPI started")
     yield
 
-    stop_scheduler()
-    prompt_manager.stop_watcher()
-    await close_db()
+    if prompt_manager is not None:
+        stop_scheduler()
+        prompt_manager.stop_watcher()
+        await close_db()
     logger.info("GYL3-Claw FastAPI stopped")
 
 
@@ -207,15 +212,29 @@ def start_server(port: int | None = None, use_webhook: bool = False) -> None:
     """Main entry: long-connection (default) or webhook mode."""
     global prompt_manager, router
 
-    logging.basicConfig(
-        level=logging.INFO,
-        format="%(asctime)s [%(name)s] %(levelname)s: %(message)s",
-        force=True,
+    from logging.handlers import TimedRotatingFileHandler
+
+    log_dir = BASE_DIR / "logs"
+    log_dir.mkdir(parents=True, exist_ok=True)
+
+    fmt = logging.Formatter("%(asctime)s [%(name)s] %(levelname)s: %(message)s")
+
+    # File handler: daily rotation, keep 30 days
+    fh = TimedRotatingFileHandler(
+        log_dir / "claw.log", when="midnight", backupCount=30, encoding="utf-8",
     )
-    # Ensure log output is not buffered
-    for handler in logging.root.handlers:
-        if hasattr(handler, "stream"):
-            handler.stream.reconfigure(line_buffering=True)
+    fh.setFormatter(fmt)
+    fh.setLevel(logging.INFO)
+
+    # Console handler: always output to stderr too
+    ch = logging.StreamHandler()
+    ch.setFormatter(fmt)
+    ch.setLevel(logging.INFO)
+
+    logging.root.handlers.clear()
+    logging.root.addHandler(fh)
+    logging.root.addHandler(ch)
+    logging.root.setLevel(logging.INFO)
 
     p = port or settings.server.port
 

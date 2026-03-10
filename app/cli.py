@@ -10,7 +10,6 @@ import click
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 SKILLS_DIR = BASE_DIR / "skills"
-SCRIPTS_DIR = BASE_DIR / "scripts"
 EVAL_LOG = BASE_DIR / "data" / "prompt_eval.jsonl"
 PID_FILE = BASE_DIR / "data" / "claw.pid"
 
@@ -196,7 +195,6 @@ CLI 命令:
   claw skill show <name>            查看技能详情
   claw skill edit <name>            编辑技能（$EDITOR）
 
-  claw script list                  列出可用脚本
   claw schedule list                列出定时任务
   claw schedule add <name> <cron> <type> <target>  添加定时任务
   claw schedule remove <name>       删除定时任务
@@ -212,7 +210,6 @@ CLI 命令:
   /url <链接>            解析网页内容并总结
   /cmd <命令>            执行本地 shell 命令
   /claude <问题>         调用 Claude Code 回答问题
-  /run <script> [args]  执行本地脚本
   /code <问题>           代码助手
   /write <内容>          写作助手
   /schedule <描述>       用自然语言创建定时任务
@@ -274,25 +271,6 @@ def skill_edit(name: str):
         return
     editor = os.environ.get("EDITOR", "vim")
     subprocess.call([editor, str(skill_file)])
-
-
-# -- script subgroup --
-
-@cli.group()
-def script():
-    """脚本管理"""
-    pass
-
-
-@script.command("list")
-def script_list():
-    """列出所有脚本"""
-    if not SCRIPTS_DIR.exists():
-        click.echo("No scripts directory.")
-        return
-    for f in sorted(SCRIPTS_DIR.iterdir()):
-        if f.is_file() and f.suffix in (".sh", ".py"):
-            click.echo(f"  {f.name}")
 
 
 # -- schedule subgroup --

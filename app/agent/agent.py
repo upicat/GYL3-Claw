@@ -54,7 +54,6 @@ _HELP_TEXT = """\
 - `/url <链接>` — 解析网页内容并总结
 - `/cmd <命令>` — 执行本地 shell 命令
 - `/claude <问题>` — 调用 Claude Code 回答问题
-- `/run <script> [args]` — 执行本地脚本
 - `/schedule list` — 查看定时任务
 - `/schedule remove <名称>` — 删除定时任务
 - `/schedule <描述>` — 用自然语言创建定时任务
@@ -81,7 +80,7 @@ class Agent:
             if cmd_result is not None:
                 return cmd_result
 
-        # 2. Skill slash commands (e.g., /web, /url, /cmd, /run, /claude)
+        # 2. Skill slash commands (e.g., /web, /url, /cmd, /claude)
         if text.startswith("/"):
             parts = text.split(maxsplit=1)
             cmd = parts[0].lower()
@@ -163,12 +162,6 @@ class Agent:
             return "用法: /web <搜索关键词>\n示例: /web Python 最新版本"
         if skill_name == "url-reader" and not arg:
             return "用法: /url <网页链接>\n示例: /url https://example.com"
-        if skill_name == "script-runner" and not arg:
-            from app.executor.script import list_scripts
-            scripts = list_scripts()
-            if not scripts:
-                return "没有可用的脚本。"
-            return f"可用脚本: {', '.join(scripts)}\n用法: /run <script> [args]"
 
         # Build appropriate user message for the skill
         if skill_name == "shell" and cmd == "/claude":
@@ -176,12 +169,6 @@ class Agent:
             user_msg = f"请执行以下 Claude Code 命令: claude -p {shlex.quote(arg)}"
         elif skill_name == "shell":
             user_msg = f"请执行以下命令: {arg}"
-        elif skill_name == "script-runner":
-            parts = arg.split()
-            script_name = parts[0]
-            script_args = parts[1:] if len(parts) > 1 else []
-            args_str = f" 参数: {' '.join(script_args)}" if script_args else ""
-            user_msg = f"请运行脚本 {script_name}{args_str}"
         elif skill_name == "url-reader":
             user_msg = f"请分析总结这个网页: {arg}"
         else:
@@ -364,7 +351,6 @@ class Agent:
 
     async def _handle_schedule(self, arg: str) -> str:
         from app.scheduler.scheduler import add_scheduled_task, remove_scheduled_task, list_scheduled_tasks
-        from app.executor.script import list_scripts
 
         if not arg:
             return (
@@ -400,30 +386,27 @@ class Agent:
             return f"定时任务 '{sub_arg}' 不存在"
 
         # Natural language — AI parse
-        scripts = list_scripts()
-        return await self._parse_schedule_by_ai(arg, scripts)
+        return await self._parse_schedule_by_ai(arg)
 
-    async def _parse_schedule_by_ai(self, description: str, scripts: list[str]) -> str:
+    async def _parse_schedule_by_ai(self, description: str) -> str:
         from app.scheduler.scheduler import add_scheduled_task
 
-        scripts_info = ", ".join(scripts) if scripts else "暂无脚本"
-        prompt = f"""\
+        prompt = """\
 你是一个定时任务解析助手。根据用户的自然语言描述，提取定时任务参数。
 
-可用脚本: {scripts_info}
-任务类型: script（执行脚本）, message（发送消息到指定 chat_id）
+任务类型: command（执行 shell 命令）, message（发送消息到指定 chat_id）
 
 请严格返回以下 JSON 格式（不要返回其他内容）:
-{{
+{
   "name": "任务名称（英文，简短）",
   "cron": "cron 表达式（5位: 分 时 日 月 周）",
-  "type": "script 或 message",
-  "target": "脚本名 或 chat_id",
+  "type": "command 或 message",
+  "target": "shell 命令 或 chat_id",
   "summary": "一句话中文说明这个任务"
-}}
+}
 
 如果描述不清楚无法解析，返回:
-{{"error": "具体缺少什么信息"}}"""
+{"error": "具体缺少什么信息"}"""
 
         client = _get_client()
         try:
@@ -457,7 +440,7 @@ class Agent:
         if not all([name, cron, task_type, target]):
             return "解析结果不完整，请更具体地描述任务。"
 
-        if task_type not in ("script", "message"):
+        if task_type not in ("command", "message"):
             return f"不支持的任务类型: {task_type}"
 
         await add_scheduled_task(name, cron, task_type, target)

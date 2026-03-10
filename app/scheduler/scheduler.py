@@ -5,7 +5,7 @@ import logging
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
 
-from app.executor.script import script_execute
+from app.executor.shell import shell_execute
 from app.feishu.message import send_text
 from app.memory.database import get_db
 
@@ -14,9 +14,9 @@ logger = logging.getLogger(__name__)
 _scheduler: AsyncIOScheduler | None = None
 
 
-async def _run_script_task(name: str, target: str, payload: str | None) -> None:
-    logger.info("Running scheduled script task: %s -> %s", name, target)
-    result = await script_execute(target)
+async def _run_command_task(name: str, target: str, payload: str | None) -> None:
+    logger.info("Running scheduled command task: %s -> %s", name, target)
+    result = await shell_execute(target)
     logger.info("Scheduled task %s result: %s", name, result[:200])
 
 
@@ -53,8 +53,8 @@ def _add_job(name: str, cron: str, task_type: str, target: str, payload: str | N
     if _scheduler is None:
         return
     trigger = CronTrigger.from_crontab(cron)
-    if task_type == "script":
-        _scheduler.add_job(_run_script_task, trigger, args=[name, target, payload], id=name, replace_existing=True)
+    if task_type in ("command", "script"):
+        _scheduler.add_job(_run_command_task, trigger, args=[name, target, payload], id=name, replace_existing=True)
     elif task_type == "message":
         _scheduler.add_job(_run_message_task, trigger, args=[name, target, payload], id=name, replace_existing=True)
     else:

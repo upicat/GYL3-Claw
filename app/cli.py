@@ -9,7 +9,7 @@ from pathlib import Path
 import click
 
 BASE_DIR = Path(__file__).resolve().parent.parent
-PROMPTS_DIR = BASE_DIR / "prompts"
+SKILLS_DIR = BASE_DIR / "skills"
 SCRIPTS_DIR = BASE_DIR / "scripts"
 EVAL_LOG = BASE_DIR / "data" / "prompt_eval.jsonl"
 PID_FILE = BASE_DIR / "data" / "claw.pid"
@@ -116,7 +116,6 @@ def status():
         click.echo(f"服务运行中 (PID={pid})")
     elif PID_FILE.exists():
         pid = PID_FILE.read_text().strip()
-        # Check if the foreground process is alive
         try:
             os.kill(int(pid), 0)
             click.echo(f"服务运行中（前台模式, PID={pid}）")
@@ -193,11 +192,9 @@ CLI 命令:
   claw logs [-f] [-n 50]            查看日志（-f 持续输出）
   claw help                         查看帮助
 
-  claw prompt list                  列出所有 Prompt 场景
-  claw prompt show <id>             查看 Prompt 详情
-  claw prompt edit <id>             编辑 Prompt（$EDITOR）
-  claw prompt add <id> <名称> <描述> <角色说明>  创建新场景
-  claw prompt del <id>              删除场景
+  claw skill list                   列出所有技能
+  claw skill show <name>            查看技能详情
+  claw skill edit <name>            编辑技能（$EDITOR）
 
   claw script list                  列出可用脚本
   claw schedule list                列出定时任务
@@ -207,103 +204,76 @@ CLI 命令:
 
 飞书命令:
   /help                 查看帮助
-  /list                 列出所有可用场景
-  /switch <id>          锁定场景（后续消息自动使用）
-  /current              查看当前场景和版本
-  /clear                清除上下文 + 解除锁定
-  /reload               手动热加载 Prompt
+  /list                 列出所有可用技能
+  /clear                清除上下文
+  /reload               重新加载技能配置
   /eval <1-5> [备注]    对上一轮回答打分
-  /prompt add/del/show  管理 Prompt 场景
   /web <关键词>          搜索网络信息
-  /schedule <描述>       用自然语言创建定时任务
-  /schedule list        查看定时任务
-  /schedule remove <名称> 删除定时任务
+  /url <链接>            解析网页内容并总结
   /cmd <命令>            执行本地 shell 命令
   /claude <问题>         调用 Claude Code 回答问题
   /run <script> [args]  执行本地脚本
-  /<场景id> <问题>       用指定场景处理本条消息
-""".strip())
+  /code <问题>           代码助手
+  /write <内容>          写作助手
+  /schedule <描述>       用自然语言创建定时任务
+  /schedule list        查看定时任务
+  /schedule remove <名称> 删除定时任务""".strip())
 
 
-# -- prompt subgroup --
+# -- skill subgroup --
 
 @cli.group()
-def prompt():
-    """Prompt 管理"""
+def skill():
+    """技能管理"""
     pass
 
 
-@prompt.command("list")
-def prompt_list():
-    """列出所有 prompt 配置"""
+@skill.command("list")
+def skill_list():
+    """列出所有技能"""
     import yaml
 
-    for f in sorted(PROMPTS_DIR.glob("*.yaml")):
-        with open(f) as fh:
-            data = yaml.safe_load(fh) or {}
-        pid = data.get("id", f.stem)
-        name = data.get("name", "")
-        ver = data.get("version", "")
-        click.echo(f"  {pid:12s} {name:12s} v{ver}  ({f.name})")
+    for child in sorted(SKILLS_DIR.iterdir()):
+        if not child.is_dir():
+            continue
+        skill_file = child / "SKILL.md"
+        if not skill_file.exists():
+            continue
+        text = skill_file.read_text(encoding="utf-8")
+        if text.startswith("---"):
+            end = text.find("---", 3)
+            if end != -1:
+                fm = yaml.safe_load(text[3:end]) or {}
+                name = fm.get("name", child.name)
+                desc = fm.get("description", "")
+                cmds = " ".join(fm.get("commands", []))
+                tools = ", ".join(fm.get("tools", []))
+                click.echo(f"  {name:18s} {desc:30s}  cmds={cmds}  tools={tools}")
 
 
-@prompt.command("show")
-@click.argument("domain_id")
-def prompt_show(domain_id: str):
-    """查看 prompt 详情"""
-    path = PROMPTS_DIR / f"{domain_id}.yaml"
-    if not path.exists():
-        click.echo(f"Not found: {domain_id}")
+@skill.command("show")
+@click.argument("name")
+def skill_show(name: str):
+    """查看技能详情"""
+    skill_file = SKILLS_DIR / name / "SKILL.md"
+    if not skill_file.exists():
+        click.echo(f"Not found: {name}")
         return
-    click.echo(path.read_text())
+    click.echo(skill_file.read_text(encoding="utf-8"))
 
 
-@prompt.command("edit")
-@click.argument("domain_id")
-def prompt_edit(domain_id: str):
-    """编辑 prompt（用 $EDITOR 打开）"""
-    import os
+@skill.command("edit")
+@click.argument("name")
+def skill_edit(name: str):
+    """编辑技能（用 $EDITOR 打开）"""
     import subprocess
 
-    path = PROMPTS_DIR / f"{domain_id}.yaml"
-    if not path.exists():
-        click.echo(f"Not found: {domain_id}")
+    skill_file = SKILLS_DIR / name / "SKILL.md"
+    if not skill_file.exists():
+        click.echo(f"Not found: {name}")
         return
     editor = os.environ.get("EDITOR", "vim")
-    subprocess.call([editor, str(path)])
-
-
-@prompt.command("add")
-@click.argument("domain_id")
-@click.argument("name")
-@click.argument("description")
-@click.argument("role")
-@click.option("--keywords", default=None, help="逗号分隔的关键词列表")
-def prompt_add(domain_id: str, name: str, description: str, role: str, keywords: str | None):
-    """创建新的 prompt 场景"""
-    from app.prompt.manager import PromptManager
-
-    kw_list = [k.strip() for k in keywords.split(",") if k.strip()] if keywords else None
-    pm = PromptManager(PROMPTS_DIR)
-    err = pm.create_prompt(domain_id, name, description, role, kw_list)
-    if err:
-        click.echo(f"Error: {err}")
-    else:
-        click.echo(f"Created: {domain_id} ({name})")
-
-
-@prompt.command("del")
-@click.argument("domain_id")
-def prompt_del(domain_id: str):
-    """删除 prompt 场景"""
-    from app.prompt.manager import PromptManager
-
-    pm = PromptManager(PROMPTS_DIR)
-    err = pm.delete_prompt(domain_id)
-    if err:
-        click.echo(f"Error: {err}")
-    else:
-        click.echo(f"Deleted: {domain_id}")
+    subprocess.call([editor, str(skill_file)])
 
 
 # -- script subgroup --

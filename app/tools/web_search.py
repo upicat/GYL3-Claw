@@ -29,7 +29,7 @@ _DEFINITION = {
 
 @register_tool("web_search", definition=_DEFINITION)
 async def execute_web_search(arguments: str) -> str:
-    from app.utils.web_search_default import search_async, format_search_results
+    from app.tools.web_search_default import search_async, format_search_results
 
     try:
         args = json.loads(arguments)

@@ -1,4 +1,4 @@
-"""URL content fetcher and summarizer."""
+"""URL content fetcher utilities."""
 from __future__ import annotations
 
 import logging
@@ -7,12 +7,9 @@ from typing import Optional
 
 import aiohttp
 
-from app.config import settings
-
 logger = logging.getLogger(__name__)
 
-_TIMEOUT = 30
-_MAX_CONTENT_LENGTH = 50000  # 截取前 50k 字符送给 AI
+_TIMEOUT = 120
 
 
 async def fetch_url(url: str, timeout: int = _TIMEOUT) -> tuple[bool, str]:
@@ -74,56 +71,8 @@ def _html_to_text_regex(html: str) -> str:
     return text.strip()
 
 
-async def summarize_url(url: str, prompt_manager) -> str:
-    """Fetch a URL, then use AI to summarize its content.
-
-    Uses the 'url_reader' prompt from PromptManager for system message,
-    model, temperature, and max_tokens configuration.
-    """
-    ok, content = await fetch_url(url)
-    if not ok:
-        return f"无法获取页面内容: {content}"
-
-    # Truncate for AI
-    if len(content) > _MAX_CONTENT_LENGTH:
-        content = content[:_MAX_CONTENT_LENGTH] + "\n\n[内容已截断...]"
-
-    # Load prompt config
-    prompt_config = prompt_manager.get_prompt("url_reader") if prompt_manager else None
-    if prompt_config:
-        system_msg = prompt_manager.build_system_message("url_reader")
-        model = prompt_config.model.name or settings.defaults.model
-        temperature = prompt_config.model.temperature if prompt_config.model.temperature is not None else 0.3
-        max_tokens = prompt_config.model.max_tokens or 2048
-    else:
-        system_msg = "你是一个网页内容总结助手。请输出结构化的中文摘要。"
-        model = settings.defaults.model
-        temperature = 0.3
-        max_tokens = 2048
-
-    from app.executor.chat import _get_client
-    client = _get_client()
-
-    try:
-        resp = await client.chat.completions.create(
-            model=model,
-            messages=[
-                {"role": "system", "content": system_msg},
-                {"role": "user", "content": f"请总结以下网页内容（来源: {url}）：\n\n{content}"},
-            ],
-            temperature=temperature,
-            max_tokens=max_tokens,
-        )
-        summary = resp.choices[0].message.content or ""
-        return f"**网页摘要** — {url}\n\n{summary}"
-    except Exception:
-        logger.exception("AI summarize failed")
-        return "AI 总结服务暂时不可用，请稍后重试。"
-
-
 def is_url(text: str) -> Optional[str]:
     """Check if text is (or contains only) a URL. Returns the URL or None."""
-    # Strip whitespace and common invisible chars (zero-width spaces etc.)
     text = text.strip().strip("\u200b\u200c\u200d\ufeff")
     if re.match(r"^https?://\S+$", text):
         return text

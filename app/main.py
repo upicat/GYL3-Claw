@@ -3,7 +3,6 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
-import os
 import threading
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -14,20 +13,19 @@ from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 
 from app.config import settings
-from app.executor.dispatcher import dispatch
 from app.feishu.message import reply_text, reply_card
 from app.memory.database import init_db, close_db
-from app.prompt.manager import PromptManager
-from app.router.router import Router
 from app.scheduler.scheduler import init_scheduler, stop_scheduler
+from app.skill.loader import SkillLoader
+from app.agent.agent import Agent
 
 logger = logging.getLogger(__name__)
 
 BASE_DIR = Path(__file__).resolve().parent.parent
-PROMPTS_DIR = BASE_DIR / "prompts"
+SKILLS_DIR = BASE_DIR / "skills"
 
-prompt_manager: PromptManager | None = None
-router: Router | None = None
+agent: Agent | None = None
+skill_loader: SkillLoader | None = None
 
 # Dedup: track recently processed message_ids
 _processed_messages: set[str] = set()
@@ -61,7 +59,6 @@ def _on_im_message_receive(data: P2ImMessageReceiveV1) -> None:
         for m in to_remove:
             _processed_messages.discard(m)
 
-    # We are called inside the ws event-loop context; get the running loop.
     try:
         loop = asyncio.get_running_loop()
         loop.create_task(_handle_message_from_event(msg, sender))
@@ -109,10 +106,7 @@ async def _handle_message_from_event(msg, sender) -> None:
                 return
             logger.info("After stripping mentions: %r", text)
 
-        route_result = await router.route(chat_id, user_id, text)
-        logger.info("Route result: type=%s domain=%s", route_result.type, route_result.domain_id)
-
-        reply = await dispatch(route_result, chat_id, user_id, prompt_manager)
+        reply = await agent.handle_message(chat_id, user_id, text)
         logger.info("Reply length=%d, preview: %s", len(reply) if reply else 0, (reply or "")[:100])
 
         if not reply:
@@ -147,24 +141,24 @@ async def _handle_message_from_event(msg, sender) -> None:
 
 @asynccontextmanager
 async def lifespan(app_: FastAPI):
-    global prompt_manager, router
+    global agent, skill_loader
 
     # In long-connection mode, components are already initialised on the ws loop;
-    # only run lifespan init when prompt_manager has not been set up yet (webhook mode).
-    if prompt_manager is None:
+    # only run lifespan init when not yet set up (webhook mode).
+    if agent is None:
         await init_db()
-        prompt_manager = PromptManager(PROMPTS_DIR)
-        prompt_manager.start_watcher()
-        router = Router(prompt_manager)
+        skill_loader = SkillLoader(SKILLS_DIR)
+        skill_loader.start_watcher()
+        agent = Agent(skill_loader)
         await init_scheduler()
 
     logger.info("GYL3-Claw FastAPI started")
     yield
 
-    if prompt_manager is not None:
-        stop_scheduler()
-        prompt_manager.stop_watcher()
-        await close_db()
+    stop_scheduler()
+    if skill_loader is not None:
+        skill_loader.stop_watcher()
+    await close_db()
     logger.info("GYL3-Claw FastAPI stopped")
 
 
@@ -173,12 +167,8 @@ app = FastAPI(title="GYL3-Claw", lifespan=lifespan)
 
 @app.get("/")
 async def index():
-    domains = prompt_manager.list_domains() if prompt_manager else []
-    return {
-        "name": "GYL3-Claw",
-        "status": "running",
-        "domains": [d["id"] for d in domains],
-    }
+    skills = list(skill_loader.all_metas.keys()) if skill_loader else []
+    return {"name": "GYL3-Claw", "status": "running", "skills": skills}
 
 
 @app.get("/health")
@@ -197,13 +187,8 @@ async def webhook_test(request: Request):
     if not text:
         return JSONResponse({"error": "text is required"}, status_code=400)
 
-    route_result = await router.route(chat_id, user_id, text)
-    reply = await dispatch(route_result, chat_id, user_id, prompt_manager)
-
-    return {
-        "route": {"type": route_result.type, "domain_id": route_result.domain_id},
-        "reply": reply,
-    }
+    reply = await agent.handle_message(chat_id, user_id, text)
+    return {"reply": reply}
 
 
 # ─── Startup ───
@@ -211,7 +196,7 @@ async def webhook_test(request: Request):
 
 def start_server(port: int | None = None, use_webhook: bool = False) -> None:
     """Main entry: long-connection (default) or webhook mode."""
-    global prompt_manager, router
+    global agent, skill_loader
 
     from logging.handlers import TimedRotatingFileHandler
 
@@ -220,14 +205,12 @@ def start_server(port: int | None = None, use_webhook: bool = False) -> None:
 
     fmt = logging.Formatter("%(asctime)s [%(name)s] %(levelname)s: %(message)s")
 
-    # File handler: daily rotation, keep 30 days
     fh = TimedRotatingFileHandler(
         log_dir / "claw.log", when="midnight", backupCount=30, encoding="utf-8",
     )
     fh.setFormatter(fmt)
     fh.setLevel(logging.INFO)
 
-    # Console handler: always output to stderr too
     ch = logging.StreamHandler()
     ch.setFormatter(fmt)
     ch.setLevel(logging.INFO)
@@ -240,29 +223,26 @@ def start_server(port: int | None = None, use_webhook: bool = False) -> None:
     p = port or settings.server.port
 
     if use_webhook:
-        # Webhook mode: plain FastAPI (needs public URL / ngrok)
         import uvicorn
         uvicorn.run(app, host="0.0.0.0", port=p)
         return
 
     # ── Long-connection mode ──
 
-    # The ws Client creates its own event loop (lark_oapi.ws.client.loop).
-    # We initialise DB / prompt / scheduler on that loop so aiosqlite shares
-    # the same loop that will later run our message-handling coroutines.
     from lark_oapi.ws import client as _ws_module
     ws_loop: asyncio.AbstractEventLoop = _ws_module.loop
 
     ws_loop.run_until_complete(init_db())
-    prompt_manager = PromptManager(PROMPTS_DIR)
-    prompt_manager.start_watcher()
-    router = Router(prompt_manager)
+
+    skill_loader = SkillLoader(SKILLS_DIR)
+    skill_loader.start_watcher()
+    agent = Agent(skill_loader)
+
     ws_loop.run_until_complete(init_scheduler())
 
-    print("[Claw] Components initialised on ws event loop", flush=True)
-    logger.info("Components initialised on ws event loop")
+    print("[Claw] Agent + Skills initialised", flush=True)
+    logger.info("Agent + Skills initialised on ws event loop")
 
-    # Start FastAPI in a background thread (for /health + /webhook/test)
     def _run_fastapi():
         import uvicorn
         uvicorn.run(app, host="0.0.0.0", port=p, log_level="warning")
@@ -271,20 +251,18 @@ def start_server(port: int | None = None, use_webhook: bool = False) -> None:
     api_thread.start()
     logger.info("FastAPI running on port %d (background thread)", p)
 
-    # Build event handler
     event_handler = (
         lark.EventDispatcherHandler.builder("", "")
         .register_p2_im_message_receive_v1(_on_im_message_receive)
         .build()
     )
 
-    # Start ws long-connection (blocks main thread)
     print("[Claw] Starting Feishu long-connection...", flush=True)
     logger.info("Starting Feishu long-connection...")
     ws_client = lark.ws.Client(
         settings.feishu.app_id,
         settings.feishu.app_secret,
         event_handler=event_handler,
-        log_level=lark.LogLevel.DEBUG,
+        log_level=lark.LogLevel.INFO,
     )
     ws_client.start()

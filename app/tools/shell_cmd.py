@@ -29,7 +29,7 @@ _DEFINITION = {
 
 @register_tool("shell_cmd", definition=_DEFINITION)
 async def execute_shell_cmd(arguments: str) -> str:
-    from app.executor.shell import shell_execute
+    from app.tools.shell import shell_execute
 
     try:
         args = json.loads(arguments)

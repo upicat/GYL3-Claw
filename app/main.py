@@ -16,7 +16,7 @@ from app.config import settings
 from app.feishu.message import reply_text, reply_card
 from app.memory.database import init_db, close_db
 from app.scheduler.scheduler import init_scheduler, stop_scheduler
-from app.skill.loader import SkillLoader
+from app.agent.loader import SkillLoader
 from app.agent.agent import Agent
 
 logger = logging.getLogger(__name__)

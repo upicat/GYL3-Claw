@@ -9,7 +9,7 @@ import yaml
 from watchdog.events import FileSystemEventHandler, FileModifiedEvent, FileCreatedEvent, FileDeletedEvent
 from watchdog.observers import Observer
 
-from app.skill.models import SkillMeta, SkillFull
+from app.agent.models import SkillMeta, SkillFull
 from app.tools.registry import resolve_tool_references
 
 logger = logging.getLogger(__name__)

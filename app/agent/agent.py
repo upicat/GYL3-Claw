@@ -10,8 +10,8 @@ from openai import AsyncOpenAI
 
 from app.config import settings
 from app.memory.conversation import clear_history, get_history, get_last_exchange, save_message
-from app.skill.loader import SkillLoader
-from app.skill.models import SkillFull
+from app.agent.loader import SkillLoader
+from app.agent.models import SkillFull
 from app.tools.registry import get_tool_executor
 
 logger = logging.getLogger(__name__)

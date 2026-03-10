@@ -5,7 +5,7 @@ import logging
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
 
-from app.executor.shell import shell_execute
+from app.tools.shell import shell_execute
 from app.feishu.message import send_text
 from app.memory.database import get_db
 

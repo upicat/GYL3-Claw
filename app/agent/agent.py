@@ -57,6 +57,7 @@ _HELP_TEXT = """\
 - `/schedule list` — 查看定时任务
 - `/schedule remove <名称>` — 删除定时任务
 - `/schedule <描述>` — 用自然语言创建定时任务
+- `/stock <代码>` — 查询A股实时行情（如 600000.SH）
 
 直接发送一个 URL 链接也会自动解析总结。
 
@@ -162,6 +163,8 @@ class Agent:
             return "用法: /web <搜索关键词>\n示例: /web Python 最新版本"
         if skill_name == "url-reader" and not arg:
             return "用法: /url <网页链接>\n示例: /url https://example.com"
+        if skill_name == "stock" and not arg:
+            return "用法: /stock <股票代码>\n示例: /stock 600000.SH\n多只: /stock 600000.SH,000001.SZ"
 
         # Build appropriate user message for the skill
         if skill_name == "shell" and cmd == "/claude":

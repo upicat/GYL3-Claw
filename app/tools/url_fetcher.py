@@ -24,7 +24,7 @@ async def fetch_url(url: str, timeout: int = _TIMEOUT) -> tuple[bool, str]:
     }
     try:
         client_timeout = aiohttp.ClientTimeout(total=timeout)
-        async with aiohttp.ClientSession(timeout=client_timeout) as session:
+        async with aiohttp.ClientSession(timeout=client_timeout, trust_env=True) as session:
             async with session.get(url, headers=headers, allow_redirects=True) as resp:
                 resp.raise_for_status()
                 content_type = resp.headers.get("Content-Type", "")

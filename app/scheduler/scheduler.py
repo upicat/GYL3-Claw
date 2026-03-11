@@ -53,7 +53,7 @@ def _add_job(name: str, cron: str, task_type: str, target: str, payload: str | N
     if _scheduler is None:
         return
     trigger = CronTrigger.from_crontab(cron)
-    if task_type in ("command", "script"):
+    if task_type == "command":
         _scheduler.add_job(_run_command_task, trigger, args=[name, target, payload], id=name, replace_existing=True)
     elif task_type == "message":
         _scheduler.add_job(_run_message_task, trigger, args=[name, target, payload], id=name, replace_existing=True)
